@@ -52,3 +52,7 @@ build/
 .env
 *.credentials
 *.key
+
+
+#Yolov8n
+yolov8n.pt
