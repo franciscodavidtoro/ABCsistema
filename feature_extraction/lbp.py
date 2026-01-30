@@ -1,11 +1,5 @@
-"""
-Extractor LBP (Local Binary Patterns).
-
-Este módulo implementa el extractor basado en Local Binary Patterns
-para la extracción de características de textura de imágenes.
-"""
-
 import numpy as np
+import cv2
 
 
 class LBPExtractor:
@@ -41,10 +35,25 @@ class LBPExtractor:
         self.grid_size = grid_size
         self.output_dim = output_dim
         
-        # TODO: Validar parámetros
-        # TODO: Calcular número de bins según método
-        # TODO: Inicializar tabla de lookup para patrones uniformes
-        # TODO: Configurar parámetros de grilla
+        # Validar parámetros
+        if radius < 1:
+            raise ValueError("radius debe ser al menos 1")
+        if n_points < 1:
+            raise ValueError("n_points debe ser al menos 1")
+        if grid_size[0] < 1 or grid_size[1] < 1:
+            raise ValueError("grid_size debe tener valores positivos")
+        
+        # Calcular número de bins según método
+        if method == 'uniform':
+            # Para patrones uniformes: n_points + 2 bins
+            self.n_bins = n_points + 2
+        else:
+            # Para método default: 2^n_points bins
+            self.n_bins = 2 ** n_points
+        
+        # Inicializar tabla de lookup para patrones uniformes
+        if method == 'uniform':
+            self.uniform_map = self._uniform_pattern_map()
     
     def extract(self, image: np.ndarray) -> np.ndarray:
         """
@@ -56,15 +65,38 @@ class LBPExtractor:
         Returns:
             np.ndarray: Vector de características LBP de dimensión (output_dim,).
         """
-        # TODO: Convertir a escala de grises si es necesario
-        # TODO: Calcular imagen LBP
-        # TODO: Dividir en grilla
-        # TODO: Calcular histograma por celda
-        # TODO: Concatenar histogramas
-        # TODO: Normalizar vector
-        # TODO: Redimensionar a output_dim
+        # Validar imagen
+        if not isinstance(image, np.ndarray):
+            raise TypeError("La imagen debe ser un numpy.ndarray")
         
-        raise NotImplementedError("LBPExtractor.extract() no está implementado aún")
+        if image.size == 0:
+            raise ValueError("La imagen está vacía")
+        
+        # Convertir a escala de grises si es necesario
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        
+        # Calcular imagen LBP
+        lbp_image = self._compute_lbp(gray)
+        
+        # Calcular histogramas espaciales
+        feature_vector = self._get_spatial_histograms(lbp_image)
+        
+        # Normalizar
+        norm = np.linalg.norm(feature_vector)
+        if norm > 0:
+            feature_vector = feature_vector / (norm + 1e-6)
+        
+        # Redimensionar a output_dim
+        if len(feature_vector) > self.output_dim:
+            feature_vector = feature_vector[:self.output_dim]
+        elif len(feature_vector) < self.output_dim:
+            padding = np.zeros(self.output_dim - len(feature_vector))
+            feature_vector = np.concatenate([feature_vector, padding])
+        
+        return feature_vector.astype(np.float32)
     
     def extract_batch(self, images: list) -> np.ndarray:
         """
@@ -76,13 +108,20 @@ class LBPExtractor:
         Returns:
             np.ndarray: Matriz de características de dimensión (N, output_dim).
         """
-        # TODO: Validar lista de imágenes
-        # TODO: Iterar sobre las imágenes
-        # TODO: Aplicar extract a cada imagen
-        # TODO: Apilar resultados en una matriz
-        # TODO: Retornar matriz (N, output_dim)
+        if not isinstance(images, (list, np.ndarray)):
+            raise TypeError("images debe ser una lista o numpy.ndarray")
         
-        raise NotImplementedError("LBPExtractor.extract_batch() no está implementado aún")
+        if len(images) == 0:
+            raise ValueError("La lista de imágenes está vacía")
+        
+        # Extraer características de cada imagen
+        features = []
+        for img in images:
+            feat = self.extract(img)
+            features.append(feat)
+        
+        # Apilar resultados en una matriz
+        return np.array(features, dtype=np.float32)
     
     def _compute_lbp(self, image: np.ndarray) -> np.ndarray:
         """
@@ -94,13 +133,31 @@ class LBPExtractor:
         Returns:
             np.ndarray: Imagen LBP con códigos de patrones.
         """
-        # TODO: Para cada pixel (excepto bordes):
-        #   - Obtener vecinos según radius y n_points
-        #   - Comparar con pixel central
-        #   - Generar código binario
-        #   - Aplicar método (uniform, ror, etc.)
+        h, w = image.shape
+        lbp = np.zeros((h, w), dtype=np.uint16)
         
-        raise NotImplementedError("_compute_lbp() no está implementado aún")
+        # Para cada pixel (excepto bordes)
+        for y in range(self.radius, h - self.radius):
+            for x in range(self.radius, w - self.radius):
+                center = image[y, x]
+                
+                # Obtener vecinos
+                neighbors = self._get_neighbors(y, x, image)
+                
+                # Generar código binario
+                binary_code = 0
+                for i, neighbor_val in enumerate(neighbors):
+                    if neighbor_val >= center:
+                        binary_code |= (1 << i)
+                
+                # Aplicar método
+                if self.method == 'uniform':
+                    # Mapear a patrón uniforme
+                    lbp[y, x] = self.uniform_map.get(binary_code, self.n_bins - 1)
+                else:
+                    lbp[y, x] = binary_code
+        
+        return lbp
     
     def _get_spatial_histograms(self, lbp_image: np.ndarray) -> np.ndarray:
         """
@@ -112,31 +169,100 @@ class LBPExtractor:
         Returns:
             np.ndarray: Vector concatenado de histogramas por celda.
         """
-        # TODO: Dividir imagen LBP en celdas según grid_size
-        # TODO: Para cada celda, calcular histograma
-        # TODO: Normalizar cada histograma
-        # TODO: Concatenar histogramas
+        h, w = lbp_image.shape
+        grid_h, grid_w = self.grid_size
         
-        raise NotImplementedError("_get_spatial_histograms() no está implementado aún")
+        # Calcular tamaño de cada celda
+        cell_h = h // grid_h
+        cell_w = w // grid_w
+        
+        histograms = []
+        
+        # Para cada celda
+        for i in range(grid_h):
+            for j in range(grid_w):
+                # Extraer región
+                y_start = i * cell_h
+                y_end = (i + 1) * cell_h if i < grid_h - 1 else h
+                x_start = j * cell_w
+                x_end = (j + 1) * cell_w if j < grid_w - 1 else w
+                
+                cell = lbp_image[y_start:y_end, x_start:x_end]
+                
+                # Calcular histograma
+                hist, _ = np.histogram(cell.flatten(), bins=self.n_bins, 
+                                       range=(0, self.n_bins))
+                
+                # Normalizar histograma
+                hist = hist.astype(np.float32)
+                hist_sum = hist.sum()
+                if hist_sum > 0:
+                    hist = hist / hist_sum
+                
+                histograms.append(hist)
+        
+        # Concatenar histogramas
+        return np.concatenate(histograms)
     
-    def _get_neighbors(self, y: int, x: int, image_h: int, image_w: int) -> list:
+    def _get_neighbors(self, y: int, x: int, image: np.ndarray) -> list:
         """
         Obtiene los píxeles vecinos en coordenadas circulares.
         
         Args:
             y (int): Coordenada Y del píxel central.
             x (int): Coordenada X del píxel central.
-            image_h (int): Altura de la imagen.
-            image_w (int): Ancho de la imagen.
+            image (np.ndarray): Imagen.
         
         Returns:
-            list: Lista de tuplas (y, x) de píxeles vecinos.
+            list: Lista de valores de píxeles vecinos.
         """
-        # TODO: Calcular coordenadas circulares de vecinos
-        # TODO: Interpolar si es necesario
-        # TODO: Validar límites de imagen
+        neighbors = []
         
-        raise NotImplementedError("_get_neighbors() no está implementado aún")
+        for i in range(self.n_points):
+            # Calcular ángulo
+            angle = 2 * np.pi * i / self.n_points
+            
+            # Calcular coordenadas circulares
+            neighbor_x = x + self.radius * np.cos(angle)
+            neighbor_y = y - self.radius * np.sin(angle)
+            
+            # Interpolar valor (bilinear)
+            neighbor_val = self._bilinear_interpolation(image, neighbor_y, neighbor_x)
+            neighbors.append(neighbor_val)
+        
+        return neighbors
+    
+    def _bilinear_interpolation(self, image: np.ndarray, y: float, x: float) -> float:
+        """
+        Interpolación bilineal para obtener valor en coordenadas no enteras.
+        
+        Args:
+            image: Imagen.
+            y: Coordenada Y (puede ser float).
+            x: Coordenada X (puede ser float).
+        
+        Returns:
+            Valor interpolado.
+        """
+        h, w = image.shape
+        
+        # Coordenadas enteras
+        x0 = int(np.floor(x))
+        x1 = min(x0 + 1, w - 1)
+        y0 = int(np.floor(y))
+        y1 = min(y0 + 1, h - 1)
+        
+        # Pesos
+        wx = x - x0
+        wy = y - y0
+        
+        # Interpolación
+        val = (1 - wx) * (1 - wy) * image[y0, x0] + \
+              wx * (1 - wy) * image[y0, x1] + \
+              (1 - wx) * wy * image[y1, x0] + \
+              wx * wy * image[y1, x1]
+        
+        return val
     
     def _uniform_pattern_map(self) -> dict:
         """
@@ -145,7 +271,22 @@ class LBPExtractor:
         Returns:
             dict: Mapeo de patrones a índices de bin.
         """
-        # TODO: Calcular patrones con máximo 2 transiciones 0-1 o 1-0
-        # TODO: Crear mapeo a índices
+        uniform_map = {}
+        bin_index = 0
         
-        raise NotImplementedError("_uniform_pattern_map() no está implementado aún")
+        # Para cada posible código binario
+        for code in range(2 ** self.n_points):
+            # Contar transiciones 0->1
+            transitions = 0
+            binary_str = format(code, f'0{self.n_points}b')
+            
+            for i in range(self.n_points):
+                if binary_str[i] != binary_str[(i + 1) % self.n_points]:
+                    transitions += 1
+            
+            # Si tiene máximo 2 transiciones, es uniforme
+            if transitions <= 2:
+                uniform_map[code] = bin_index
+                bin_index += 1
+        
+        return uniform_map

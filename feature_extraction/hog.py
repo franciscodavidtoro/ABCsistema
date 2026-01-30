@@ -1,11 +1,5 @@
-"""
-Extractor HOG (Histogram of Oriented Gradients).
-
-Este módulo implementa el extractor basado en Histogramas de Gradientes Orientados
-para la extracción de características de forma y contornos en imágenes.
-"""
-
 import numpy as np
+import cv2
 
 
 class HOGExtractor:
@@ -38,9 +32,13 @@ class HOGExtractor:
         self.cells_per_block = cells_per_block
         self.output_dim = output_dim
         
-        # TODO: Validar parámetros
-        # TODO: Pre-calcular kernels de gradientes
-        # TODO: Inicializar tablas de ángulos
+        # Validar parámetros
+        if orientations < 1:
+            raise ValueError("orientations debe ser al menos 1")
+        if pixels_per_cell[0] < 1 or pixels_per_cell[1] < 1:
+            raise ValueError("pixels_per_cell debe tener valores positivos")
+        if cells_per_block[0] < 1 or cells_per_block[1] < 1:
+            raise ValueError("cells_per_block debe tener valores positivos")
     
     def extract(self, image: np.ndarray) -> np.ndarray:
         """
@@ -52,16 +50,40 @@ class HOGExtractor:
         Returns:
             np.ndarray: Vector de características HOG de dimensión (output_dim,).
         """
-        # TODO: Validar formato de imagen
-        # TODO: Convertir a escala de grises si es necesario
-        # TODO: Calcular gradientes (Gx, Gy)
-        # TODO: Calcular magnitud y orientación
-        # TODO: Construir histogramas por celda
-        # TODO: Normalizar bloques
-        # TODO: Concatenar vector final
-        # TODO: Redimensionar a output_dim
+        # Validar formato de imagen
+        if not isinstance(image, np.ndarray):
+            raise TypeError("La imagen debe ser un numpy.ndarray")
         
-        raise NotImplementedError("HOGExtractor.extract() no está implementado aún")
+        if image.size == 0:
+            raise ValueError("La imagen está vacía")
+        
+        # Convertir a escala de grises si es necesario
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        
+        # Calcular gradientes
+        magnitude, orientation = self._compute_gradients(gray)
+        
+        # Construir histogramas por celda
+        histograms = self._build_histograms(magnitude, orientation)
+        
+        # Normalizar bloques
+        normalized = self._normalize_blocks(histograms)
+        
+        # Concatenar vector final
+        feature_vector = self._flatten_features(normalized)
+        
+        # Redimensionar a output_dim
+        if len(feature_vector) > self.output_dim:
+            feature_vector = feature_vector[:self.output_dim]
+        elif len(feature_vector) < self.output_dim:
+            # Rellenar con ceros si es necesario
+            padding = np.zeros(self.output_dim - len(feature_vector))
+            feature_vector = np.concatenate([feature_vector, padding])
+        
+        return feature_vector.astype(np.float32)
     
     def extract_batch(self, images: list) -> np.ndarray:
         """
@@ -73,13 +95,20 @@ class HOGExtractor:
         Returns:
             np.ndarray: Matriz de características de dimensión (N, output_dim).
         """
-        # TODO: Validar lista de imágenes
-        # TODO: Iterar sobre las imágenes
-        # TODO: Aplicar extract a cada imagen
-        # TODO: Apilar resultados en una matriz
-        # TODO: Retornar matriz (N, output_dim)
+        if not isinstance(images, (list, np.ndarray)):
+            raise TypeError("images debe ser una lista o numpy.ndarray")
         
-        raise NotImplementedError("HOGExtractor.extract_batch() no está implementado aún")
+        if len(images) == 0:
+            raise ValueError("La lista de imágenes está vacía")
+        
+        # Extraer características de cada imagen
+        features = []
+        for img in images:
+            feat = self.extract(img)
+            features.append(feat)
+        
+        # Apilar resultados en una matriz
+        return np.array(features, dtype=np.float32)
     
     def _compute_gradients(self, image: np.ndarray) -> tuple:
         """
@@ -91,13 +120,23 @@ class HOGExtractor:
         Returns:
             tuple: (magnitud, orientación) como numpy arrays.
         """
-        # TODO: Aplicar filtro Sobel o similar en X
-        # TODO: Aplicar filtro Sobel o similar en Y
-        # TODO: Calcular magnitud: sqrt(Gx^2 + Gy^2)
-        # TODO: Calcular orientación: atan2(Gy, Gx)
-        # TODO: Convertir orientación a rango [0, 180) o [0, 360)
+        # Convertir a float para precisión
+        image = image.astype(np.float32)
         
-        raise NotImplementedError("_compute_gradients() no está implementado aún")
+        # Aplicar filtro Sobel en X e Y
+        gx = cv2.Sobel(image, cv2.CV_32F, 1, 0, ksize=1)
+        gy = cv2.Sobel(image, cv2.CV_32F, 0, 1, ksize=1)
+        
+        # Calcular magnitud: sqrt(Gx^2 + Gy^2)
+        magnitude = np.sqrt(gx**2 + gy**2)
+        
+        # Calcular orientación: atan2(Gy, Gx)
+        orientation = np.arctan2(gy, gx) * (180 / np.pi)
+        
+        # Convertir orientación a rango [0, 180)
+        orientation = orientation % 180
+        
+        return magnitude, orientation
     
     def _build_histograms(self, magnitude: np.ndarray, orientation: np.ndarray) -> np.ndarray:
         """
@@ -110,12 +149,44 @@ class HOGExtractor:
         Returns:
             np.ndarray: Matriz de histogramas (n_cells_y, n_cells_x, orientations).
         """
-        # TODO: Dividir imagen en celdas según pixels_per_cell
-        # TODO: Para cada celda, construir histograma de orientaciones
-        # TODO: Usar magnitud como pesos para el histograma
-        # TODO: Retornar matriz de histogramas
+        h, w = magnitude.shape
+        cell_h, cell_w = self.pixels_per_cell
         
-        raise NotImplementedError("_build_histograms() no está implementado aún")
+        # Calcular número de celdas
+        n_cells_y = h // cell_h
+        n_cells_x = w // cell_w
+        
+        # Inicializar matriz de histogramas
+        histograms = np.zeros((n_cells_y, n_cells_x, self.orientations))
+        
+        # Tamaño de cada bin de orientación
+        bin_size = 180.0 / self.orientations
+        
+        # Para cada celda, construir histograma
+        for i in range(n_cells_y):
+            for j in range(n_cells_x):
+                # Extraer región de la celda
+                y_start = i * cell_h
+                y_end = (i + 1) * cell_h
+                x_start = j * cell_w
+                x_end = (j + 1) * cell_w
+                
+                cell_mag = magnitude[y_start:y_end, x_start:x_end]
+                cell_ori = orientation[y_start:y_end, x_start:x_end]
+                
+                # Construir histograma usando magnitud como peso
+                for y in range(cell_mag.shape[0]):
+                    for x in range(cell_mag.shape[1]):
+                        angle = cell_ori[y, x]
+                        mag = cell_mag[y, x]
+                        
+                        # Determinar bin
+                        bin_idx = int(angle / bin_size) % self.orientations
+                        
+                        # Acumular magnitud en el bin
+                        histograms[i, j, bin_idx] += mag
+        
+        return histograms
     
     def _normalize_blocks(self, histograms: np.ndarray) -> np.ndarray:
         """
@@ -127,11 +198,36 @@ class HOGExtractor:
         Returns:
             np.ndarray: Histogramas normalizados.
         """
-        # TODO: Agrupar celdas en bloques según cells_per_block
-        # TODO: Para cada bloque, normalizar (L2 norm)
-        # TODO: Retornar histogramas normalizados
+        n_cells_y, n_cells_x, _ = histograms.shape
+        block_h, block_w = self.cells_per_block
         
-        raise NotImplementedError("_normalize_blocks() no está implementado aún")
+        # Calcular número de bloques
+        n_blocks_y = n_cells_y - block_h + 1
+        n_blocks_x = n_cells_x - block_w + 1
+        
+        if n_blocks_y <= 0 or n_blocks_x <= 0:
+            # Si no hay suficientes celdas, retornar histogramas sin normalizar
+            return histograms
+        
+        normalized_blocks = []
+        
+        # Para cada bloque
+        for i in range(n_blocks_y):
+            for j in range(n_blocks_x):
+                # Extraer bloque de histogramas
+                block = histograms[i:i+block_h, j:j+block_w, :]
+                
+                # Concatenar histogramas del bloque
+                block_vector = block.flatten()
+                
+                # Normalizar con L2 norm
+                norm = np.linalg.norm(block_vector)
+                if norm > 0:
+                    block_vector = block_vector / (norm + 1e-6)
+                
+                normalized_blocks.append(block_vector)
+        
+        return np.array(normalized_blocks)
     
     def _flatten_features(self, normalized_histograms: np.ndarray) -> np.ndarray:
         """
@@ -143,7 +239,5 @@ class HOGExtractor:
         Returns:
             np.ndarray: Vector 1D de características.
         """
-        # TODO: Concatenar todos los histogramas
-        # TODO: Retornar como vector 1D
-        
-        raise NotImplementedError("_flatten_features() no está implementado aún")
+        # Concatenar todos los bloques normalizados
+        return normalized_histograms.flatten()
