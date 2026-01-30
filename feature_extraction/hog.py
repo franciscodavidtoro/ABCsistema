@@ -1,108 +1,149 @@
 """
-Preprocesador HSH (Histogram of Spatial Hue).
+Extractor HOG (Histogram of Oriented Gradients).
 
-Este módulo implementa el preprocesador basado en histogramas espaciales
-de tonalidad para la extracción de características de color.
+Este módulo implementa el extractor basado en Histogramas de Gradientes Orientados
+para la extracción de características de forma y contornos en imágenes.
 """
 
 import numpy as np
-from .base_preprocessor import BasePreprocessor
 
 
-class HSHPreprocessor(BasePreprocessor):
+class HOGExtractor:
     """
-    Preprocesador HSH (Histogram of Spatial Hue).
+    Extractor HOG (Histogram of Oriented Gradients).
     
-    Extrae características basadas en la distribución espacial del color (Hue)
+    Extrae características basadas en la distribución de orientaciones de gradientes
     en diferentes regiones de la imagen.
     
     Attributes:
-        n_bins (int): Número de bins para el histograma de Hue.
-        n_regions (tuple): División espacial de la imagen (filas, columnas).
-        color_space (str): Espacio de color a utilizar ('HSV', 'HSL').
+        orientations (int): Número de bins para el histograma de orientaciones.
+        pixels_per_cell (tuple): Tamaño de las celdas (alto, ancho) en píxeles.
+        cells_per_block (tuple): Número de celdas por bloque (alto, ancho).
+        output_dim (int): Dimensionalidad del vector de salida.
     """
     
-    def __init__(self, n_bins: int = 32, n_regions: tuple = (4, 4), 
-                 color_space: str = 'HSV', output_dim: int = 512):
+    def __init__(self, orientations: int = 9, pixels_per_cell: tuple = (8, 8),
+                 cells_per_block: tuple = (2, 2), output_dim: int = 1764):
         """
-        Inicializa el preprocesador HSH.
+        Inicializa el extractor HOG.
         
         Args:
-            n_bins (int): Número de bins para el histograma. Default: 32.
-            n_regions (tuple): División espacial (filas, columnas). Default: (4, 4).
-            color_space (str): Espacio de color. Default: 'HSV'.
-            output_dim (int): Dimensionalidad del vector de salida. Default: 512.
+            orientations (int): Número de bins de orientación. Default: 9.
+            pixels_per_cell (tuple): Píxeles por celda (alto, ancho). Default: (8, 8).
+            cells_per_block (tuple): Celdas por bloque (alto, ancho). Default: (2, 2).
+            output_dim (int): Dimensionalidad del vector de salida. Default: 1764.
         """
-        super().__init__(name='HSH', output_dim=output_dim)
-        self.n_bins = n_bins
-        self.n_regions = n_regions
-        self.color_space = color_space
+        self.orientations = orientations
+        self.pixels_per_cell = pixels_per_cell
+        self.cells_per_block = cells_per_block
+        self.output_dim = output_dim
         
-        # TODO: Calcular output_dim basado en n_bins y n_regions
-        # TODO: Inicializar rangos de bins
-        # TODO: Configurar conversión de espacio de color
+        # TODO: Validar parámetros
+        # TODO: Pre-calcular kernels de gradientes
+        # TODO: Inicializar tablas de ángulos
     
-    def preprocess(self, image: np.ndarray) -> np.ndarray:
+    def extract(self, image: np.ndarray) -> np.ndarray:
         """
-        Preprocesa una imagen usando HSH y la convierte en un vector de características.
+        Extrae características HOG de una imagen.
         
         Args:
-            image (np.ndarray): Imagen de entrada en formato numpy array (H, W, C).
+            image (np.ndarray): Imagen de entrada (H, W, C) o (H, W).
         
         Returns:
-            np.ndarray: Vector de características de dimensión (output_dim,).
+            np.ndarray: Vector de características HOG de dimensión (output_dim,).
         """
-        # TODO: Convertir imagen a espacio de color (HSV/HSL)
-        # TODO: Dividir imagen en regiones espaciales
-        # TODO: Para cada región, calcular histograma de Hue
-        # TODO: Concatenar histogramas
-        # TODO: Normalizar vector resultante
-        # TODO: Retornar vector de características
+        # TODO: Validar formato de imagen
+        # TODO: Convertir a escala de grises si es necesario
+        # TODO: Calcular gradientes (Gx, Gy)
+        # TODO: Calcular magnitud y orientación
+        # TODO: Construir histogramas por celda
+        # TODO: Normalizar bloques
+        # TODO: Concatenar vector final
+        # TODO: Redimensionar a output_dim
         
-        raise NotImplementedError("HSHPreprocessor.preprocess() no está implementado aún")
+        raise NotImplementedError("HOGExtractor.extract() no está implementado aún")
     
-    def preprocess_batch(self, images: list) -> np.ndarray:
+    def extract_batch(self, images: list) -> np.ndarray:
         """
-        Preprocesa un lote de imágenes usando HSH.
+        Extrae características HOG de un lote de imágenes.
         
         Args:
-            images (list): Lista de imágenes en formato numpy array.
+            images (list): Lista de imágenes (numpy arrays).
         
         Returns:
             np.ndarray: Matriz de características de dimensión (N, output_dim).
         """
+        # TODO: Validar lista de imágenes
         # TODO: Iterar sobre las imágenes
-        # TODO: Aplicar preprocess a cada imagen
+        # TODO: Aplicar extract a cada imagen
         # TODO: Apilar resultados en una matriz
+        # TODO: Retornar matriz (N, output_dim)
         
-        raise NotImplementedError("HSHPreprocessor.preprocess_batch() no está implementado aún")
+        raise NotImplementedError("HOGExtractor.extract_batch() no está implementado aún")
     
-    def _convert_color_space(self, image: np.ndarray) -> np.ndarray:
+    def _compute_gradients(self, image: np.ndarray) -> tuple:
         """
-        Convierte imagen a espacio de color especificado.
+        Calcula los gradientes (magnitud y orientación) de una imagen.
         
         Args:
-            image (np.ndarray): Imagen RGB.
+            image (np.ndarray): Imagen en escala de grises.
         
         Returns:
-            np.ndarray: Imagen en espacio de color HSV o HSL.
+            tuple: (magnitud, orientación) como numpy arrays.
         """
-        # TODO: Implementar conversión RGB -> HSV/HSL
+        # TODO: Aplicar filtro Sobel o similar en X
+        # TODO: Aplicar filtro Sobel o similar en Y
+        # TODO: Calcular magnitud: sqrt(Gx^2 + Gy^2)
+        # TODO: Calcular orientación: atan2(Gy, Gx)
+        # TODO: Convertir orientación a rango [0, 180) o [0, 360)
         
-        raise NotImplementedError("_convert_color_space() no está implementado aún")
+        raise NotImplementedError("_compute_gradients() no está implementado aún")
     
-    def _compute_spatial_histogram(self, hue_channel: np.ndarray) -> np.ndarray:
+    def _build_histograms(self, magnitude: np.ndarray, orientation: np.ndarray) -> np.ndarray:
         """
-        Calcula histogramas espaciales del canal Hue.
+        Construye histogramas de orientaciones por celda.
         
         Args:
-            hue_channel (np.ndarray): Canal de Hue de la imagen.
+            magnitude (np.ndarray): Magnitud de gradientes.
+            orientation (np.ndarray): Orientación de gradientes.
         
         Returns:
-            np.ndarray: Vector concatenado de histogramas.
+            np.ndarray: Matriz de histogramas (n_cells_y, n_cells_x, orientations).
         """
-        # TODO: Dividir canal en regiones
-        # TODO: Calcular histograma por región
-        # TODO: Concatenar histogramas
+        # TODO: Dividir imagen en celdas según pixels_per_cell
+        # TODO: Para cada celda, construir histograma de orientaciones
+        # TODO: Usar magnitud como pesos para el histograma
+        # TODO: Retornar matriz de histogramas
         
-        raise NotImplementedError("_compute_spatial_histogram() no está implementado aún")
+        raise NotImplementedError("_build_histograms() no está implementado aún")
+    
+    def _normalize_blocks(self, histograms: np.ndarray) -> np.ndarray:
+        """
+        Normaliza bloques de histogramas.
+        
+        Args:
+            histograms (np.ndarray): Matriz de histogramas por celda.
+        
+        Returns:
+            np.ndarray: Histogramas normalizados.
+        """
+        # TODO: Agrupar celdas en bloques según cells_per_block
+        # TODO: Para cada bloque, normalizar (L2 norm)
+        # TODO: Retornar histogramas normalizados
+        
+        raise NotImplementedError("_normalize_blocks() no está implementado aún")
+    
+    def _flatten_features(self, normalized_histograms: np.ndarray) -> np.ndarray:
+        """
+        Aplana los histogramas normalizados en un vector 1D.
+        
+        Args:
+            normalized_histograms (np.ndarray): Histogramas normalizados por bloque.
+        
+        Returns:
+            np.ndarray: Vector 1D de características.
+        """
+        # TODO: Concatenar todos los histogramas
+        # TODO: Retornar como vector 1D
+        
+        raise NotImplementedError("_flatten_features() no está implementado aún")

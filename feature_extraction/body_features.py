@@ -3,7 +3,17 @@ Módulo para la extracción de características corporales.
 
 Extrae vectores numéricos representativos de cuerpos (vista frontal y posterior)
 capturando silueta, proporciones y patrones visuales.
+
+Soporta tres métodos de extracción:
+- 'hog': Histogram of Oriented Gradients (descriptores de forma)
+- 'hsv': Histogramas de color en espacio HSV
+- 'lbp': Local Binary Patterns (descriptores de textura)
 """
+
+import numpy as np
+from .hog import HOGExtractor
+from .hsv import HSVExtractor
+from .lbp import LBPExtractor
 
 
 class BodyFeatureExtractor:
@@ -11,54 +21,64 @@ class BodyFeatureExtractor:
     Clase encargada de extraer características discriminativas de cuerpos.
     
     Attributes:
-        model (str): Modelo de extracción a utilizar.
-        embedding_dim (int): Dimensionalidad del vector de características.
+        method (str): Método de extracción ('hog', 'hsv', 'lbp').
+        extractor: Instancia del extractor específico.
     """
     
-    def __init__(self, model='resnet50', embedding_dim=2048):
+    AVAILABLE_METHODS = {
+        'hog': HOGExtractor,
+        'hsv': HSVExtractor,
+        'lbp': LBPExtractor,
+    }
+    
+    def __init__(self, method='hog', **kwargs):
         """
         Inicializa el extractor de características corporales.
         
         Args:
-            model (str): Modelo a utilizar para extracción.
-            embedding_dim (int): Dimensionalidad del embedding.
+            method (str): Método de extracción ('hog', 'hsv', 'lbp'). Default: 'hog'.
+            **kwargs: Parámetros adicionales para el extractor específico.
+        
+        Raises:
+            ValueError: Si el método no es válido.
         """
-        # TODO: Cargar modelo de extracción
-        # TODO: Validar dimensionalidad del embedding
-        # TODO: Inicializar procesador de imágenes
-        pass
+        if method not in self.AVAILABLE_METHODS:
+            raise ValueError(
+                f"Método '{method}' no válido. Opciones disponibles: {list(self.AVAILABLE_METHODS.keys())}"
+            )
+        
+        self.method = method
+        self.extractor = self.AVAILABLE_METHODS[method](**kwargs)
     
     def extract(self, image):
         """
         Extrae características de una imagen corporal.
         
         Args:
-            image: Imagen en formato numpy array (cuerpo).
+            image (numpy.ndarray): Imagen en formato numpy array (cuerpo).
         
         Returns:
-            numpy.ndarray: Vector de características de dimensión embedding_dim.
+            numpy.ndarray: Vector de características.
         """
-        # TODO: Normalizar imagen
-        # TODO: Redimensionar a tamaño estándar
-        # TODO: Pasar por modelo de extracción
-        # TODO: Retornar vector de características
-        pass
+        if not isinstance(image, np.ndarray):
+            raise TypeError(f"Se espera numpy.ndarray, se recibió {type(image)}")
+        
+        return self.extractor.extract(image)
     
     def extract_batch(self, images):
         """
         Extrae características de un lote de imágenes corporales.
         
         Args:
-            images (list): Lista de imágenes de cuerpos.
+            images (list): Lista de imágenes de cuerpos (numpy arrays).
         
         Returns:
-            numpy.ndarray: Matriz de dimensión (N, embedding_dim).
+            numpy.ndarray: Matriz de características de dimensión (N, feature_dim).
         """
-        # TODO: Iterar sobre imágenes
-        # TODO: Extraer características de cada una
-        # TODO: Ensamblar matriz de características
-        # TODO: Retornar matriz
-        pass
+        if not isinstance(images, (list, np.ndarray)):
+            raise TypeError(f"Se espera lista o numpy.ndarray, se recibió {type(images)}")
+        
+        return self.extractor.extract_batch(images)
     
     def extract_from_directory(self, directory_path):
         """
