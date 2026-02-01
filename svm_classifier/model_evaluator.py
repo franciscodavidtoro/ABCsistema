@@ -5,139 +5,140 @@ Implementa métricas y análisis de desempeño del clasificador SVM
 y del sistema de reidentificación en general.
 """
 
+from __future__ import annotations
+
+from typing import Any, Dict, Tuple
+
+import numpy as np
+
+try:
+    from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
+    SKLEARN_AVAILABLE = True
+except Exception:
+    SKLEARN_AVAILABLE = False
+
 
 class ModelEvaluator:
-    """
-    Clase para evaluar el desempeño del modelo de reidentificación.
-    
-    Attributes:
-        svm_model (SVMModel): Modelo a evaluar.
-    """
-    
-    def __init__(self, svm_model):
-        """
-        Inicializa el evaluador del modelo.
-        
-        Args:
-            svm_model (SVMModel): Modelo SVM a evaluar.
-        """
-        # TODO: Almacenar referencia al modelo
-        # TODO: Inicializar variables de métricas
-        pass
-    
-    def evaluate(self, features, labels):
-        """
-        Evalúa el modelo con un conjunto de prueba.
-        
-        Args:
-            features (numpy.ndarray): Características de prueba.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            dict: Diccionario con métricas de desempeño.
-        """
-        # TODO: Hacer predicciones
-        # TODO: Calcular matriz de confusión
-        # TODO: Calcular precisión, recall, F1
-        # TODO: Retornar diccionario de métricas
-        pass
-    
-    def calculate_accuracy(self, predictions, labels):
-        """
-        Calcula exactitud (accuracy) de las predicciones.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones del modelo.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            float: Exactitud (0-1).
-        """
-        # TODO: Comparar predicciones con etiquetas
-        # TODO: Calcular proporción de aciertos
-        # TODO: Retornar exactitud
-        pass
-    
-    def calculate_precision_recall(self, predictions, labels):
-        """
-        Calcula precisión y recall por clase.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            dict: Diccionario con precision y recall por clase.
-        """
-        # TODO: Calcular TP, FP, FN por clase
-        # TODO: Calcular precision y recall
-        # TODO: Retornar diccionario
-        pass
-    
-    def calculate_f1_score(self, predictions, labels):
-        """
-        Calcula F1-score por clase.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            dict: F1-score por clase.
-        """
-        # TODO: Obtener precision y recall
-        # TODO: Calcular F1 = 2 * (precision * recall) / (precision + recall)
-        # TODO: Retornar F1-scores
-        pass
-    
-    def generate_confusion_matrix(self, predictions, labels):
-        """
-        Genera matriz de confusión.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            numpy.ndarray: Matriz de confusión.
-        """
-        # TODO: Contar TP, FP, TN, FN
-        # TODO: Construir matriz
-        # TODO: Retornar matriz
-        pass
-    
-    def generate_report(self, predictions, labels):
-        """
-        Genera un reporte completo de evaluación.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-        
-        Returns:
-            str: Reporte formateado.
-        """
-        # TODO: Calcular todas las métricas
-        # TODO: Formatear reporte
-        # TODO: Incluir matriz de confusión
-        # TODO: Retornar reporte como string
-        pass
-    
-    def plot_metrics(self, predictions, labels, output_path=None):
-        """
-        Genera visualizaciones de métricas.
-        
-        Args:
-            predictions (numpy.ndarray): Predicciones.
-            labels (numpy.ndarray): Etiquetas verdaderas.
-            output_path (str): Ruta para guardar gráficas.
-        
-        Returns:
-            dict: Información de gráficas generadas.
-        """
-        # TODO: Generar gráfica de matriz de confusión
-        # TODO: Generar gráfica de precisión/recall
-        # TODO: Generar gráfica de curva ROC
-        # TODO: Guardar gráficas si se especifica output_path
-        # TODO: Retornar información de archivos generados
-        pass
+    """Clase para evaluar el desempeño del modelo de reidentificación."""
+
+    def __init__(self, svm_model: Any = None):
+        self.svm_model = svm_model
+
+    def evaluate(self, model: Any, features: np.ndarray, labels: np.ndarray) -> Dict[str, Any]:
+        """Evalúa y retorna métricas básicas: accuracy, precision, recall, f1, confusion matrix."""
+        if not isinstance(features, np.ndarray):
+            features = np.asarray(features)
+        if not isinstance(labels, np.ndarray):
+            labels = np.asarray(labels)
+
+        preds, confidences = model.predict_with_confidence(features)
+
+        # Calculate accuracy
+        accuracy = self.calculate_accuracy(preds, labels)
+
+        # Precision/recall/F1
+        precision = None
+        recall = None
+        f1 = None
+        conf_mat = None
+
+        if SKLEARN_AVAILABLE:
+            precision_arr, recall_arr, f1_arr, _ = precision_recall_fscore_support(labels, preds, zero_division=0)
+            precision = precision_arr.tolist()
+            recall = recall_arr.tolist()
+            f1 = f1_arr.tolist()
+            conf_mat = confusion_matrix(labels, preds).tolist()
+            mean_precision = float(np.mean(precision_arr))
+            mean_recall = float(np.mean(recall_arr))
+            mean_f1 = float(np.mean(f1_arr))
+        else:
+            # Simple calculations per class
+            classes = list(np.unique(np.concatenate((labels, preds))))
+            precision_arr = []
+            recall_arr = []
+            f1_arr = []
+            for c in classes:
+                tp = int(((preds == c) & (labels == c)).sum())
+                fp = int(((preds == c) & (labels != c)).sum())
+                fn = int(((preds != c) & (labels == c)).sum())
+                prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                f1s = (2 * prec * rec) / (prec + rec) if (prec + rec) > 0 else 0.0
+                precision_arr.append(prec)
+                recall_arr.append(rec)
+                f1_arr.append(f1s)
+            precision = precision_arr
+            recall = recall_arr
+            f1 = f1_arr
+            mean_precision = float(np.mean(precision_arr))
+            mean_recall = float(np.mean(recall_arr))
+            mean_f1 = float(np.mean(f1_arr))
+            # build confusion matrix
+            class_to_idx = {c: i for i, c in enumerate(classes)}
+            cm = np.zeros((len(classes), len(classes)), dtype=int)
+            for t, p in zip(labels, preds):
+                cm[class_to_idx[t], class_to_idx[p]] += 1
+            conf_mat = cm.tolist()
+
+        metrics = {
+            'accuracy': float(accuracy),
+            'precision_per_class': precision,
+            'recall_per_class': recall,
+            'f1_per_class': f1,
+            'mean_precision': mean_precision,
+            'mean_recall': mean_recall,
+            'mean_f1': mean_f1,
+            'confusion_matrix': conf_mat,
+            'num_samples': int(len(labels))
+        }
+        return metrics
+
+    def calculate_accuracy(self, predictions: np.ndarray, labels: np.ndarray) -> float:
+        if SKLEARN_AVAILABLE:
+            return float(accuracy_score(labels, predictions))
+        else:
+            return float((predictions == labels).mean())
+
+    # The other helper methods (precision/recall/f1/confusion matrix) are implemented within evaluate
+    # but kept for API completeness
+
+    def calculate_precision_recall(self, predictions: np.ndarray, labels: np.ndarray) -> Dict[str, Any]:
+        _, precision_arr, recall_arr, _ = precision_recall_fscore_support(labels, predictions, zero_division=0) if SKLEARN_AVAILABLE else (None, [], [], None)
+        return {'precision_per_class': precision_arr.tolist() if hasattr(precision_arr, 'tolist') else precision_arr,
+                'recall_per_class': recall_arr.tolist() if hasattr(recall_arr, 'tolist') else recall_arr}
+
+    def calculate_f1_score(self, predictions: np.ndarray, labels: np.ndarray) -> Dict[str, Any]:
+        _, _, f1_arr, _ = precision_recall_fscore_support(labels, predictions, zero_division=0) if SKLEARN_AVAILABLE else (None, None, [], None)
+        return {'f1_per_class': f1_arr.tolist() if hasattr(f1_arr, 'tolist') else f1_arr}
+
+    def generate_confusion_matrix(self, predictions: np.ndarray, labels: np.ndarray):
+        if SKLEARN_AVAILABLE:
+            return confusion_matrix(labels, predictions)
+        else:
+            classes = list(np.unique(np.concatenate((labels, predictions))))
+            class_to_idx = {c: i for i, c in enumerate(classes)}
+            cm = np.zeros((len(classes), len(classes)), dtype=int)
+            for t, p in zip(labels, predictions):
+                cm[class_to_idx[t], class_to_idx[p]] += 1
+            return cm
+
+    def generate_report(self, predictions: np.ndarray, labels: np.ndarray) -> str:
+        metrics = self.evaluate(self.svm_model, predictions, labels) if self.svm_model is not None else {}
+        return str(metrics)
+
+    def plot_metrics(self, predictions: np.ndarray, labels: np.ndarray, output_path: str = None):
+        # Lightweight: no plotting unless matplotlib is available; placeholder
+        try:
+            import matplotlib.pyplot as plt
+            cm = self.generate_confusion_matrix(predictions, labels)
+            fig, ax = plt.subplots()
+            cax = ax.matshow(cm)
+            fig.colorbar(cax)
+            ax.set_xlabel('Predicted')
+            ax.set_ylabel('True')
+            if output_path:
+                fig.savefig(output_path)
+                return {'saved': output_path}
+            return {'fig': fig}
+        except Exception:
+            return {'status': 'plotting not available'}

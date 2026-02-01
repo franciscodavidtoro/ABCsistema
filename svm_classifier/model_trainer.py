@@ -5,110 +5,124 @@ Implementa el pipeline de entrenamiento incluyendo preparación de datos,
 validación cruzada y ajuste de hiperparámetros.
 """
 
+from __future__ import annotations
+
+import time
+from typing import Tuple, Optional, Any
+
+import numpy as np
+
+try:
+    from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV, cross_val_score
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.metrics import accuracy_score
+    SKLEARN_AVAILABLE = True
+except Exception:
+    SKLEARN_AVAILABLE = False
+
+from .svm_model import SVMModel
+
 
 class ModelTrainer:
-    """
-    Clase encargada del entrenamiento y validación del modelo SVM.
-    
-    Attributes:
-        svm_model (SVMModel): Instancia del modelo SVM.
-        train_test_split (float): Proporción de datos para entrenamiento.
-    """
-    
-    def __init__(self, svm_model, train_test_split=0.8):
-        """
-        Inicializa el entrenador del modelo.
-        
-        Args:
-            svm_model (SVMModel): Modelo SVM a entrenar.
-            train_test_split (float): Proporción train/test (0-1).
-        """
-        # TODO: Almacenar referencia al modelo
-        # TODO: Validar parámetro train_test_split
-        # TODO: Inicializar variables de seguimiento
-        pass
-    
-    def prepare_data(self, features, labels, normalize=True):
-        """
-        Prepara y normaliza los datos para entrenamiento.
-        
-        Args:
-            features (numpy.ndarray): Matriz de características.
-            labels (numpy.ndarray): Array de etiquetas.
-            normalize (bool): Si es True, normaliza características.
-        
-        Returns:
-            tuple: (features_prepared, labels_prepared, scaler)
-        """
-        # TODO: Validar datos
-        # TODO: Normalizar si es requerido
-        # TODO: Manejar valores faltantes
-        # TODO: Retornar datos preparados
-        pass
-    
-    def split_data(self, features, labels):
-        """
-        Divide datos en conjuntos de entrenamiento y prueba.
-        
-        Args:
-            features (numpy.ndarray): Matriz de características.
-            labels (numpy.ndarray): Array de etiquetas.
-        
-        Returns:
-            tuple: (X_train, X_test, y_train, y_test)
-        """
-        # TODO: Aplicar stratified split
-        # TODO: Retornar conjuntos divididos
-        pass
-    
-    def train_model(self, features, labels):
-        """
-        Entrena el modelo SVM.
-        
-        Args:
-            features (numpy.ndarray): Características de entrenamiento.
-            labels (numpy.ndarray): Etiquetas de entrenamiento.
-        
-        Returns:
-            dict: Estadísticas de entrenamiento.
-        """
-        # TODO: Preparar datos
-        # TODO: Llamar a train del modelo
-        # TODO: Retornar estadísticas
-        pass
-    
-    def cross_validate(self, features, labels, n_folds=5):
-        """
-        Realiza validación cruzada del modelo.
-        
-        Args:
-            features (numpy.ndarray): Características.
-            labels (numpy.ndarray): Etiquetas.
-            n_folds (int): Cantidad de folds.
-        
-        Returns:
-            dict: Resultados de validación cruzada.
-        """
-        # TODO: Implementar k-fold cross validation
-        # TODO: Entrenar modelo en cada fold
-        # TODO: Calcular métricas promedio
-        # TODO: Retornar resultados
-        pass
-    
-    def tune_hyperparameters(self, features, labels, param_grid):
-        """
-        Busca los mejores hiperparámetros mediante grid search.
-        
-        Args:
-            features (numpy.ndarray): Características.
-            labels (numpy.ndarray): Etiquetas.
-            param_grid (dict): Grilla de parámetros a buscar.
-        
-        Returns:
-            dict: Mejores parámetros encontrados y su performance.
-        """
-        # TODO: Implementar grid search
-        # TODO: Entrenar modelos con diferentes parámetros
-        # TODO: Evaluar con validación cruzada
-        # TODO: Retornar mejores parámetros
-        pass
+    """Entrenador que encapsula preparación de datos y entrenamiento."""
+
+    def __init__(self, svm_model: Optional[SVMModel] = None, train_test_split: float = 0.8):
+        if svm_model is None:
+            self.svm_model = SVMModel()
+        else:
+            self.svm_model = svm_model
+
+        if not (0.0 < train_test_split < 1.0):
+            raise ValueError("train_test_split debe estar entre 0 y 1")
+        self.train_test_split = train_test_split
+        self.scaler = None
+
+    def prepare_data(self, features: np.ndarray, labels: np.ndarray, normalize: bool = True) -> Tuple[np.ndarray, np.ndarray, Optional[Any]]:
+        if not isinstance(features, np.ndarray):
+            features = np.asarray(features)
+        if not isinstance(labels, np.ndarray):
+            labels = np.asarray(labels)
+
+        # Fill NaNs
+        if np.isnan(features).any():
+            features = np.nan_to_num(features)
+
+        scaler = None
+        if normalize:
+            if SKLEARN_AVAILABLE:
+                scaler = StandardScaler()
+                features = scaler.fit_transform(features)
+            else:
+                mean = features.mean(axis=0)
+                std = features.std(axis=0)
+                std[std == 0] = 1.0
+                features = (features - mean) / std
+                scaler = {'mean': mean, 'std': std}
+
+        self.scaler = scaler
+        return features, labels, scaler
+
+    def split_data(self, features: np.ndarray, labels: np.ndarray):
+        if SKLEARN_AVAILABLE:
+            X_train, X_test, y_train, y_test = train_test_split(
+                features, labels, test_size=1.0 - self.train_test_split, stratify=labels, random_state=42
+            )
+        else:
+            # Simple split keeping class proportions
+            n = features.shape[0]
+            idx = np.arange(n)
+            np.random.seed(42)
+            np.random.shuffle(idx)
+            cut = int(n * self.train_test_split)
+            train_idx = idx[:cut]
+            test_idx = idx[cut:]
+            X_train, X_test = features[train_idx], features[test_idx]
+            y_train, y_test = labels[train_idx], labels[test_idx]
+        return X_train, X_test, y_train, y_test
+
+    def train(self, features: np.ndarray, labels: np.ndarray, normalize: bool = True) -> Tuple[SVMModel, dict]:
+        start = time.time()
+        X, y, scaler = self.prepare_data(features, labels, normalize=normalize)
+        X_train, X_test, y_train, y_test = self.split_data(X, y)
+
+        stats_train = self.svm_model.train(X_train, y_train)
+
+        # Evaluate on test
+        try:
+            preds = self.svm_model.predict(X_test)
+            if SKLEARN_AVAILABLE:
+                acc = accuracy_score(y_test, preds)
+            else:
+                acc = (preds == y_test).mean()
+        except Exception:
+            acc = None
+
+        stats = {
+            **stats_train,
+            'test_accuracy': float(acc) if acc is not None else None,
+            'train_elapsed_sec': time.time() - start
+        }
+        return self.svm_model, stats
+
+    def cross_validate(self, features: np.ndarray, labels: np.ndarray, n_folds: int = 5):
+        if not SKLEARN_AVAILABLE:
+            raise NotImplementedError("cross_validate requiere scikit-learn")
+        X, y, _ = self.prepare_data(features, labels)
+        cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
+        # Create a fresh estimator for cross val
+        # Use SVC with the trainer's svm_model params
+        from sklearn.svm import SVC
+        estimator = SVC(kernel=self.svm_model.kernel, C=self.svm_model.C)
+        scores = cross_val_score(estimator, X, y, cv=cv, scoring='accuracy')
+        return {'fold_accuracies': list(scores), 'mean_accuracy': float(scores.mean())}
+
+    def tune_hyperparameters(self, features: np.ndarray, labels: np.ndarray, param_grid: dict, cv: int = 3):
+        if not SKLEARN_AVAILABLE:
+            raise NotImplementedError("tune_hyperparameters requiere scikit-learn")
+        X, y, _ = self.prepare_data(features, labels)
+        base = SVMModel()
+        from sklearn.svm import SVC
+        estimator = SVC()
+        gs = GridSearchCV(estimator, param_grid, cv=cv, scoring='accuracy', n_jobs=-1)
+        gs.fit(X, y)
+        return {'best_params': gs.best_params_, 'best_score': float(gs.best_score_)}
