@@ -133,7 +133,20 @@ class HOGExtractor:
         if len(images) == 0:
             raise ValueError("La lista de imágenes está vacía")
 
-        features = [self.extract(img) for img in images]
+        print(f"[DEBUG HOGExtractor] Iniciando extract_batch con {len(images)} imágenes")
+        import time
+        total_start = time.time()
+        
+        features = []
+        for idx, img in enumerate(images):
+            if idx % 10 == 0:
+                elapsed = time.time() - total_start
+                print(f"[DEBUG HOGExtractor] Procesando imagen {idx+1}/{len(images)} (tiempo: {elapsed:.1f}s)")
+            features.append(self.extract(img))
+        
+        total_elapsed = time.time() - total_start
+        print(f"[DEBUG HOGExtractor] Batch completado en {total_elapsed:.2f}s ({total_elapsed/len(images):.2f}s/imagen)")
+        
         return np.stack(features, axis=0).astype(np.float32)
 
     def _resize_image(self, image: np.ndarray, size: Tuple[int, int]) -> np.ndarray:

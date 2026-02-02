@@ -58,19 +58,18 @@ def show_menu(handler: CommandHandler) -> str:
     """
     print(f"\n┌─────────────────────────────────────────────────┐")
     print(f"│            MENÚ PRINCIPAL                       │")
-    print(f"│  Preprocesador actual: {handler.preprocessor_type:3}                    │")
+    print(f"│  Método de extracción: {handler.extractor_method:3}                    │")
     print(f"├─────────────────────────────────────────────────┤")
     print(f"│  1. Preprocesar dataset                         │")
-    print(f"│  2. Detectar cuerpos/rostros                    │")
-    print(f"│  3. Extraer características                     │")
-    print(f"│  4. Entrenar modelo SVM                         │")
-    print(f"│  5. Ver evaluación                              │")
+    print(f"│  2. Extraer características                     │")
+    print(f"│  3. Entrenar modelo SVM                         │")
+    print(f"│  4. Evaluar modelo                              │")
     print(f"│  ─────────────────────────────────────────────  │")
-    print(f"│  6. 🚀 AUTOMÁTICO (ejecutar todo)               │")
+    print(f"│  5. 🚀 AUTOMÁTICO (ejecutar todo)               │")
     print(f"│  ─────────────────────────────────────────────  │")
-    print(f"│  7. Cambiar preprocesador                       │")
-    print(f"│  8. Ver estado del sistema                      │")
-    print(f"│  9. Ayuda                                       │")
+    print(f"│  6. Cambiar método de extracción                │")
+    print(f"│  7. Ver estado del sistema                      │")
+    print(f"│  8. Ayuda                                       │")
     print(f"│  0. Salir                                       │")
     print(f"└─────────────────────────────────────────────────┘")
     
@@ -106,31 +105,25 @@ def run_interactive_mode(handler: CommandHandler):
         
         try:
             if option == '1':
-                # Preprocesar
+                # Preprocesar dataset
                 print("\n" + "─" * 50)
                 result = handler.preprocess()
                 print_result(result)
             
             elif option == '2':
-                # Detectar
-                print("\n" + "─" * 50)
-                result = handler.detect()
-                print_result(result)
-            
-            elif option == '3':
                 # Extraer características
                 print("\n" + "─" * 50)
                 result = handler.extract_features()
                 print_result(result)
             
-            elif option == '4':
+            elif option == '3':
                 # Entrenar SVM
                 print("\n" + "─" * 50)
                 result = handler.train_svm()
                 print_result(result)
             
-            elif option == '5':
-                # Ver evaluación
+            elif option == '4':
+                # Evaluar modelo
                 print("\n" + "─" * 50)
                 result = handler.evaluate()
                 print_result(result)
@@ -148,8 +141,8 @@ def run_interactive_mode(handler: CommandHandler):
                                 print(f"  ║  {metric:20} : {str(value):>10}  ║")
                     print("  ╚═══════════════════════════════════════╝")
             
-            elif option == '6':
-                # Automático
+            elif option == '5':
+                # Automático - ejecutar pipeline completo
                 confirm = input("\n¿Ejecutar pipeline completo automáticamente? (s/n): ").strip().lower()
                 if confirm == 's':
                     result = handler.run_automatic()
@@ -162,25 +155,25 @@ def run_interactive_mode(handler: CommandHandler):
                 else:
                     print("Operación cancelada.")
             
-            elif option == '7':
-                # Cambiar preprocesador
-                print(f"\nPreprocesador actual: {handler.preprocessor_type}")
-                print(f"Opciones disponibles: {', '.join(handler.AVAILABLE_PREPROCESSORS)}")
-                new_prep = input("Nuevo preprocesador: ").strip().upper()
+            elif option == '6':
+                # Cambiar método de extracción
+                print(f"\nMétodo de extracción actual: {handler.extractor_method}")
+                print(f"Opciones disponibles: {', '.join(handler.AVAILABLE_EXTRACTORS)}")
+                new_method = input("Nuevo método de extracción: ").strip().upper()
                 
-                result = handler.set_preprocessor(new_prep)
+                result = handler.set_extractor_method(new_method)
                 if result.get('success'):
                     print(f"✓ {result.get('message')}")
                 else:
                     print(f"✗ {result.get('error')}")
             
-            elif option == '8':
+            elif option == '7':
                 # Ver estado
                 status = handler.get_status()
                 print("\n" + "─" * 50)
                 print("  ESTADO DEL SISTEMA")
                 print("─" * 50)
-                print(f"\n  Preprocesador: {status['preprocessor_type']}")
+                print(f"\n  Método de extracción: {status['extractor_method']}")
                 print("\n  Rutas:")
                 for name, path in status['paths'].items():
                     print(f"    • {name}: {path}")
@@ -189,7 +182,7 @@ def run_interactive_mode(handler: CommandHandler):
                     icon = "✓" if ready else "✗"
                     print(f"    {icon} {component}")
             
-            elif option == '9':
+            elif option == '8':
                 # Ayuda
                 print(handler.help())
             

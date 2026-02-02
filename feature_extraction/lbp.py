@@ -1,13 +1,14 @@
 import numpy as np
 import cv2
+from skimage.feature import local_binary_pattern
 
 
 class LBPExtractor:
     """
-    Extractor LBP (Local Binary Patterns).
+    Extractor LBP (Local Binary Patterns) optimizado.
     
-    Extrae características de textura basadas en patrones binarios locales,
-    ampliamente utilizados en reconocimiento de texturas y rostros.
+    Utiliza la implementación eficiente de scikit-image para extraer
+    características de textura basadas en patrones binarios locales.
     
     Attributes:
         radius (int): Radio del operador LBP.
@@ -18,7 +19,7 @@ class LBPExtractor:
     """
     
     def __init__(self, radius: int = 1, n_points: int = 8, method: str = 'uniform',
-                 grid_size: tuple = (8, 8), output_dim: int = 256):
+                 grid_size: tuple = (4, 4), output_dim: int = 256):
         """
         Inicializa el extractor LBP.
         
@@ -26,7 +27,7 @@ class LBPExtractor:
             radius (int): Radio del operador LBP. Default: 1.
             n_points (int): Número de puntos de muestreo. Default: 8.
             method (str): Método de cálculo ('uniform', 'default', 'ror', etc). Default: 'uniform'.
-            grid_size (tuple): Tamaño de la grilla (filas, columnas). Default: (8, 8).
+            grid_size (tuple): Tamaño de la grilla (filas, columnas). Default: (4, 4).
             output_dim (int): Dimensionalidad del vector de salida. Default: 256.
         """
         self.radius = radius
@@ -47,13 +48,12 @@ class LBPExtractor:
         if method == 'uniform':
             # Para patrones uniformes: n_points + 2 bins
             self.n_bins = n_points + 2
+        elif method == 'nri_uniform':
+            # Non-rotation invariant uniform
+            self.n_bins = n_points * (n_points - 1) + 3
         else:
             # Para método default: 2^n_points bins
             self.n_bins = 2 ** n_points
-        
-        # Inicializar tabla de lookup para patrones uniformes
-        if method == 'uniform':
-            self.uniform_map = self._uniform_pattern_map()
     
     def extract(self, image: np.ndarray) -> np.ndarray:
         """
@@ -78,18 +78,26 @@ class LBPExtractor:
         else:
             gray = image.copy()
         
-        # Calcular imagen LBP
-        lbp_image = self._compute_lbp(gray)
+        # Redimensionar para acelerar el procesamiento si la imagen es muy grande
+        max_size = 128
+        h, w = gray.shape
+        if h > max_size or w > max_size:
+            scale = min(max_size / h, max_size / w)
+            new_h, new_w = int(h * scale), int(w * scale)
+            gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        
+        # Calcular imagen LBP usando skimage (MUY rápido, implementado en C)
+        lbp_image = local_binary_pattern(gray, self.n_points, self.radius, method=self.method)
         
         # Calcular histogramas espaciales
         feature_vector = self._get_spatial_histograms(lbp_image)
         
-        # Normalizar
+        # Normalizar L2
         norm = np.linalg.norm(feature_vector)
         if norm > 0:
             feature_vector = feature_vector / (norm + 1e-6)
         
-        # Redimensionar a output_dim
+        # Ajustar a output_dim
         if len(feature_vector) > self.output_dim:
             feature_vector = feature_vector[:self.output_dim]
         elif len(feature_vector) < self.output_dim:
@@ -114,54 +122,26 @@ class LBPExtractor:
         if len(images) == 0:
             raise ValueError("La lista de imágenes está vacía")
         
-        # Extraer características de cada imagen
-        features = []
-        for img in images:
-            feat = self.extract(img)
-            features.append(feat)
+        n_images = len(images)
+        print(f"[LBP] Extrayendo características de {n_images} imágenes...")
         
-        # Apilar resultados en una matriz
-        return np.array(features, dtype=np.float32)
-    
-    def _compute_lbp(self, image: np.ndarray) -> np.ndarray:
-        """
-        Calcula la imagen LBP.
+        # Pre-allocar array de resultados
+        features = np.zeros((n_images, self.output_dim), dtype=np.float32)
         
-        Args:
-            image (np.ndarray): Imagen en escala de grises.
+        # Procesar imágenes
+        for idx, img in enumerate(images):
+            features[idx] = self.extract(img)
+            
+            # Mostrar progreso cada 50 imágenes
+            if (idx + 1) % 50 == 0:
+                print(f"[LBP] Procesadas {idx + 1}/{n_images} imágenes")
         
-        Returns:
-            np.ndarray: Imagen LBP con códigos de patrones.
-        """
-        h, w = image.shape
-        lbp = np.zeros((h, w), dtype=np.uint16)
-        
-        # Para cada pixel (excepto bordes)
-        for y in range(self.radius, h - self.radius):
-            for x in range(self.radius, w - self.radius):
-                center = image[y, x]
-                
-                # Obtener vecinos
-                neighbors = self._get_neighbors(y, x, image)
-                
-                # Generar código binario
-                binary_code = 0
-                for i, neighbor_val in enumerate(neighbors):
-                    if neighbor_val >= center:
-                        binary_code |= (1 << i)
-                
-                # Aplicar método
-                if self.method == 'uniform':
-                    # Mapear a patrón uniforme
-                    lbp[y, x] = self.uniform_map.get(binary_code, self.n_bins - 1)
-                else:
-                    lbp[y, x] = binary_code
-        
-        return lbp
+        print(f"[LBP] Extracción completada.")
+        return features
     
     def _get_spatial_histograms(self, lbp_image: np.ndarray) -> np.ndarray:
         """
-        Calcula histogramas espaciales de una imagen LBP.
+        Calcula histogramas espaciales de una imagen LBP de forma vectorizada.
         
         Args:
             lbp_image (np.ndarray): Imagen LBP.
@@ -176,9 +156,11 @@ class LBPExtractor:
         cell_h = h // grid_h
         cell_w = w // grid_w
         
-        histograms = []
+        # Pre-allocar array de histogramas
+        n_cells = grid_h * grid_w
+        histograms = np.zeros((n_cells, self.n_bins), dtype=np.float32)
         
-        # Para cada celda
+        cell_idx = 0
         for i in range(grid_h):
             for j in range(grid_w):
                 # Extraer región
@@ -189,104 +171,15 @@ class LBPExtractor:
                 
                 cell = lbp_image[y_start:y_end, x_start:x_end]
                 
-                # Calcular histograma
-                hist, _ = np.histogram(cell.flatten(), bins=self.n_bins, 
-                                       range=(0, self.n_bins))
+                # Calcular histograma con numpy (más rápido)
+                hist, _ = np.histogram(cell.ravel(), bins=self.n_bins, range=(0, self.n_bins))
                 
                 # Normalizar histograma
-                hist = hist.astype(np.float32)
                 hist_sum = hist.sum()
                 if hist_sum > 0:
-                    hist = hist / hist_sum
+                    histograms[cell_idx] = hist / hist_sum
                 
-                histograms.append(hist)
+                cell_idx += 1
         
         # Concatenar histogramas
-        return np.concatenate(histograms)
-    
-    def _get_neighbors(self, y: int, x: int, image: np.ndarray) -> list:
-        """
-        Obtiene los píxeles vecinos en coordenadas circulares.
-        
-        Args:
-            y (int): Coordenada Y del píxel central.
-            x (int): Coordenada X del píxel central.
-            image (np.ndarray): Imagen.
-        
-        Returns:
-            list: Lista de valores de píxeles vecinos.
-        """
-        neighbors = []
-        
-        for i in range(self.n_points):
-            # Calcular ángulo
-            angle = 2 * np.pi * i / self.n_points
-            
-            # Calcular coordenadas circulares
-            neighbor_x = x + self.radius * np.cos(angle)
-            neighbor_y = y - self.radius * np.sin(angle)
-            
-            # Interpolar valor (bilinear)
-            neighbor_val = self._bilinear_interpolation(image, neighbor_y, neighbor_x)
-            neighbors.append(neighbor_val)
-        
-        return neighbors
-    
-    def _bilinear_interpolation(self, image: np.ndarray, y: float, x: float) -> float:
-        """
-        Interpolación bilineal para obtener valor en coordenadas no enteras.
-        
-        Args:
-            image: Imagen.
-            y: Coordenada Y (puede ser float).
-            x: Coordenada X (puede ser float).
-        
-        Returns:
-            Valor interpolado.
-        """
-        h, w = image.shape
-        
-        # Coordenadas enteras
-        x0 = int(np.floor(x))
-        x1 = min(x0 + 1, w - 1)
-        y0 = int(np.floor(y))
-        y1 = min(y0 + 1, h - 1)
-        
-        # Pesos
-        wx = x - x0
-        wy = y - y0
-        
-        # Interpolación
-        val = (1 - wx) * (1 - wy) * image[y0, x0] + \
-              wx * (1 - wy) * image[y0, x1] + \
-              (1 - wx) * wy * image[y1, x0] + \
-              wx * wy * image[y1, x1]
-        
-        return val
-    
-    def _uniform_pattern_map(self) -> dict:
-        """
-        Genera tabla de lookup para patrones uniformes.
-        
-        Returns:
-            dict: Mapeo de patrones a índices de bin.
-        """
-        uniform_map = {}
-        bin_index = 0
-        
-        # Para cada posible código binario
-        for code in range(2 ** self.n_points):
-            # Contar transiciones 0->1
-            transitions = 0
-            binary_str = format(code, f'0{self.n_points}b')
-            
-            for i in range(self.n_points):
-                if binary_str[i] != binary_str[(i + 1) % self.n_points]:
-                    transitions += 1
-            
-            # Si tiene máximo 2 transiciones, es uniforme
-            if transitions <= 2:
-                uniform_map[code] = bin_index
-                bin_index += 1
-        
-        return uniform_map
+        return histograms.ravel()

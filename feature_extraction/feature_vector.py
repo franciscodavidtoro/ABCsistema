@@ -245,7 +245,17 @@ class FeatureVector:
         Returns:
             list: Lista de FeatureVector.
         """
+        print(f"[DEBUG FeatureVector] Iniciando from_images_batch con {len(images)} imágenes")
+        print(f"[DEBUG FeatureVector] Extractor: {extractor.__class__.__name__}")
+        
+        import time
+        start = time.time()
         vectors = extractor.extract_batch(images)
+        elapsed = time.time() - start
+        
+        print(f"[DEBUG FeatureVector] extract_batch completado en {elapsed:.2f}s")
+        print(f"[DEBUG FeatureVector] Vectores obtenidos: {len(vectors)}, shape: {vectors.shape if hasattr(vectors, 'shape') else 'N/A'}")
+        
         result = []
         
         for i, vec in enumerate(vectors):
@@ -259,6 +269,7 @@ class FeatureVector:
                 }
             ))
         
+        print(f"[DEBUG FeatureVector] FeatureVectors creados: {len(result)}")
         return result
     
     def __len__(self):

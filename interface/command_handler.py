@@ -16,11 +16,10 @@ class CommandHandler:
     
     Attributes:
         commands (dict): Diccionario de comandos disponibles.
-        preprocessor_type (str): Tipo de preprocesador activo ('BLP', 'HSH', 'LBP').
-        preprocessor: Instancia del preprocesador activo.
+        extractor_method (str): Método de extracción activo ('HOG', 'HSV', 'LBP').
     """
     
-    AVAILABLE_PREPROCESSORS = ['BLP', 'HSH', 'LBP']
+    AVAILABLE_EXTRACTORS = ['HOG', 'HSV', 'LBP']
     
     # ============== RUTAS FIJAS DEL SISTEMA ==============
     # Ruta base del proyecto
@@ -46,8 +45,7 @@ class CommandHandler:
         Inicializa el manejador de comandos.
         """
         self.commands = {}
-        self.preprocessor_type = 'LBP'  # Preprocesador por defecto
-        self.preprocessor = None
+        self.extractor_method = 'LBP'  # Método de extracción por defecto
         self.last_evaluation = None  # Almacena última evaluación
         self._ensure_directories()
         self._register_commands()
@@ -96,8 +94,8 @@ class CommandHandler:
                 'description': 'Ejecutar pipeline completo automáticamente'
             },
             'set_preprocessor': {
-                'handler': self.set_preprocessor,
-                'description': 'Configurar el tipo de preprocesador (BLP, HSH, LBP)'
+                'handler': self.set_extractor_method,
+                'description': 'Configurar el método de extracción (HOG, HSV, LBP)'
             },
             'status': {
                 'handler': self.get_status,
@@ -137,53 +135,42 @@ class CommandHandler:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def set_preprocessor(self, preprocessor_type: str) -> Dict[str, Any]:
+    def set_extractor_method(self, extractor_method: str) -> Dict[str, Any]:
         """
-        Configura el tipo de preprocesador a utilizar.
+        Configura el método de extracción de características a utilizar.
         
         Args:
-            preprocessor_type (str): Tipo de preprocesador ('BLP', 'HSH', 'LBP').
+            extractor_method (str): Método de extracción ('HOG', 'HSV', 'LBP').
         
         Returns:
             dict: Resultado de la configuración.
         """
-        preprocessor_type = preprocessor_type.upper()
+        extractor_method = extractor_method.upper()
         
-        if preprocessor_type not in self.AVAILABLE_PREPROCESSORS:
+        if extractor_method not in self.AVAILABLE_EXTRACTORS:
             return {
                 'success': False,
-                'error': f"Preprocesador '{preprocessor_type}' no válido. Opciones: {self.AVAILABLE_PREPROCESSORS}"
+                'error': f"Método '{extractor_method}' no válido. Opciones: {self.AVAILABLE_EXTRACTORS}"
             }
         
-        self.preprocessor_type = preprocessor_type
-        self.preprocessor = None  # Se inicializará cuando se necesite
+        self.extractor_method = extractor_method
         
         return {
             'success': True,
-            'message': f"Preprocesador configurado: {preprocessor_type}",
-            'preprocessor': preprocessor_type
+            'message': f"Método de extracción configurado: {extractor_method}",
+            'extractor_method': extractor_method
         }
     
-    def _get_preprocessor(self):
+    def _get_feature_extractor(self):
         """
-        Obtiene la instancia del preprocesador configurado.
+        Obtiene la instancia del extractor de características configurado.
         
         Returns:
-            Instancia del preprocesador.
+            BodyFeatureExtractor: Instancia del extractor.
         """
-        if self.preprocessor is not None:
-            return self.preprocessor
+        from feature_extraction import BodyFeatureExtractor
         
-        from preprocessing.preprocessors import BLPPreprocessor, HSHPreprocessor, LBPPreprocessor
-        
-        if self.preprocessor_type == 'BLP':
-            self.preprocessor = BLPPreprocessor()
-        elif self.preprocessor_type == 'HSH':
-            self.preprocessor = HSHPreprocessor()
-        elif self.preprocessor_type == 'LBP':
-            self.preprocessor = LBPPreprocessor()
-        
-        return self.preprocessor
+        return BodyFeatureExtractor(method=self.extractor_method.lower())
     
     # ==================== COMANDO 1: PREPROCESAR ====================
     def preprocess(self) -> Dict[str, Any]:
@@ -330,7 +317,7 @@ class CommandHandler:
             dict: Resultado de la extracción.
         """
         print(f"\n[EXTRAER] Iniciando extracción de características...")
-        print(f"  Preprocesador: {self.preprocessor_type}")
+        print(f"  Método de extracción: {self.extractor_method}")
         print(f"  Dataset: {self.DATASET_PROCESSED_PATH}")
         print(f"  Salida: {self.FEATURES_PATH}")
         
@@ -341,6 +328,7 @@ class CommandHandler:
             }
         
         # Recolectar imágenes
+        print("[DEBUG] Recolectando rutas de imágenes...")
         image_paths = []
         labels = []
         
@@ -362,18 +350,24 @@ class CommandHandler:
             }
         
         print(f"  Imágenes encontradas: {len(image_paths)}")
+        print(f"[DEBUG] Personas detectadas: {list(set(labels))}")
         
         try:
             from feature_extraction import FeatureVector
+            print("[DEBUG] FeatureVector importado correctamente")
             
-            preprocessor = self._get_preprocessor()
+            extractor = self._get_feature_extractor()
+            print(f"[DEBUG] Extractor creado: {extractor.__class__.__name__} con método {self.extractor_method}")
             
             # Cargar imágenes
+            print("[DEBUG] Cargando imágenes en memoria...")
             images = []
             valid_paths = []
             valid_labels = []
             
             for i, path in enumerate(image_paths):
+                if i % 50 == 0:
+                    print(f"[DEBUG] Cargando imagen {i+1}/{len(image_paths)}...")
                 try:
                     try:
                         import cv2
@@ -383,6 +377,8 @@ class CommandHandler:
                             images.append(img)
                             valid_paths.append(path)
                             valid_labels.append(labels[i])
+                        else:
+                            print(f"  [WARN] cv2.imread retornó None para: {path}")
                     except ImportError:
                         from PIL import Image
                         pil_img = Image.open(path)
@@ -392,38 +388,62 @@ class CommandHandler:
                 except Exception as e:
                     print(f"  [WARN] Error cargando {path}: {e}")
             
+            print(f"[DEBUG] Imágenes cargadas exitosamente: {len(images)}")
+            
             if not images:
                 return {'success': False, 'error': "No se pudieron cargar las imágenes."}
             
+            # Mostrar tamaño de primera imagen para diagnóstico
+            if images:
+                print(f"[DEBUG] Tamaño de primera imagen: {images[0].shape}")
+            
             # Extraer características
-            feature_vectors = FeatureVector.from_images_batch(images, preprocessor, valid_labels)
+            print(f"[DEBUG] Iniciando extracción de características para {len(images)} imágenes...")
+            print(f"[DEBUG] NOTA: Esto puede tomar varios minutos dependiendo del método...")
+            
+            import time
+            start_time = time.time()
+            
+            feature_vectors = FeatureVector.from_images_batch(images, extractor, valid_labels)
+            
+            elapsed = time.time() - start_time
+            print(f"[DEBUG] Extracción completada en {elapsed:.2f} segundos")
+            
+            print(f"[DEBUG] Convirtiendo a matriz numpy...")
             feature_matrix = np.array([fv.to_numpy() for fv in feature_vectors])
+            print(f"[DEBUG] Matriz de características shape: {feature_matrix.shape}")
             
             # Guardar características
-            features_file = os.path.join(self.FEATURES_PATH, f'features_{self.preprocessor_type}.npy')
-            labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.preprocessor_type}.npy')
+            features_file = os.path.join(self.FEATURES_PATH, f'features_{self.extractor_method}.npy')
+            labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.extractor_method}.npy')
             
+            print(f"[DEBUG] Guardando características en: {features_file}")
             np.save(features_file, feature_matrix)
             np.save(labels_file, np.array(valid_labels))
+            print(f"[DEBUG] Archivos guardados exitosamente")
             
             return {
                 'success': True,
                 'message': "Extracción de características completada",
-                'preprocessor': self.preprocessor_type,
+                'extractor_method': self.extractor_method,
                 'num_images': len(images),
                 'feature_dimension': feature_matrix.shape[1] if len(feature_matrix.shape) > 1 else 0,
                 'features_file': features_file,
                 'labels_file': labels_file
             }
         except NotImplementedError as e:
-            print(f"  [INFO] Preprocesador {self.preprocessor_type} pendiente de implementación")
+            print(f"  [INFO] Método {self.extractor_method} pendiente de implementación")
             return {
                 'success': True,
-                'message': f"Extracción (placeholder) - Preprocesador {self.preprocessor_type} no implementado",
+                'message': f"Extracción (placeholder) - Método {self.extractor_method} no implementado",
                 'num_images': len(image_paths),
-                'preprocessor': self.preprocessor_type
+                'extractor_method': self.extractor_method
             }
         except Exception as e:
+            import traceback
+            print(f"[ERROR] Excepción durante extracción: {e}")
+            print(f"[ERROR] Traceback completo:")
+            traceback.print_exc()
             return {'success': False, 'error': str(e)}
     
     # ==================== COMANDO 4: ENTRENAR SVM ====================
@@ -439,8 +459,8 @@ class CommandHandler:
         print(f"  Modelo salida: {self.SVM_MODEL_PATH}")
         
         # Buscar archivo de características
-        features_file = os.path.join(self.FEATURES_PATH, f'features_{self.preprocessor_type}.npy')
-        labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.preprocessor_type}.npy')
+        features_file = os.path.join(self.FEATURES_PATH, f'features_{self.extractor_method}.npy')
+        labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.extractor_method}.npy')
         
         if not os.path.exists(features_file) or not os.path.exists(labels_file):
             return {
@@ -525,8 +545,8 @@ class CommandHandler:
             # Cargar modelo y datos de prueba
             model = SVMModel.load(self.SVM_MODEL_PATH)
             
-            features_file = os.path.join(self.FEATURES_PATH, f'features_{self.preprocessor_type}.npy')
-            labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.preprocessor_type}.npy')
+            features_file = os.path.join(self.FEATURES_PATH, f'features_{self.extractor_method}.npy')
+            labels_file = os.path.join(self.FEATURES_PATH, f'labels_{self.extractor_method}.npy')
             
             if os.path.exists(features_file) and os.path.exists(labels_file):
                 features = np.load(features_file)
@@ -566,11 +586,10 @@ class CommandHandler:
     def run_automatic(self) -> Dict[str, Any]:
         """
         Ejecuta el pipeline completo automáticamente:
-        1. Preprocesar
-        2. Detectar
-        3. Extraer características
-        4. Entrenar SVM
-        5. Mostrar evaluación
+        1. Preprocesar (extracción de frames, augmentation y detección)
+        2. Extraer características
+        3. Entrenar SVM
+        4. Mostrar evaluación
         
         Returns:
             dict: Resultado de todo el proceso.
@@ -578,7 +597,7 @@ class CommandHandler:
         print("\n" + "=" * 60)
         print("   EJECUCIÓN AUTOMÁTICA DEL PIPELINE COMPLETO")
         print("=" * 60)
-        print(f"\nPreprocesador seleccionado: {self.preprocessor_type}")
+        print(f"\nMétodo de extracción seleccionado: {self.extractor_method}")
         print(f"Dataset: {self.DATASET_PATH}")
         print(f"Dataset procesado: {self.DATASET_PROCESSED_PATH}")
         print(f"Modelo: {self.SVM_MODEL_PATH}")
@@ -586,18 +605,16 @@ class CommandHandler:
         
         results = {
             'preprocess': None,
-            'detect': None,
             'extract': None,
             'train': None,
             'evaluate': None
         }
         
         steps = [
-            ('preprocess', 'PASO 1/5: Preprocesamiento', self.preprocess),
-            ('detect', 'PASO 2/5: Detección', self.detect),
-            ('extract', 'PASO 3/5: Extracción de características', self.extract_features),
-            ('train', 'PASO 4/5: Entrenamiento SVM', self.train_svm),
-            ('evaluate', 'PASO 5/5: Evaluación', self.evaluate)
+            ('preprocess', 'PASO 1/4: Preprocesamiento', self.preprocess),
+            ('extract', 'PASO 2/4: Extracción de características', self.extract_features),
+            ('train', 'PASO 3/4: Entrenamiento SVM', self.train_svm),
+            ('evaluate', 'PASO 4/4: Evaluación', self.evaluate)
         ]
         
         all_success = True
@@ -658,8 +675,8 @@ class CommandHandler:
                 help_text += f"  {name:15} - {info['description']}\n"
             
             help_text += "\n" + "-" * 50
-            help_text += f"\nPreprocesador actual: {self.preprocessor_type}"
-            help_text += f"\nOpciones: {', '.join(self.AVAILABLE_PREPROCESSORS)}"
+            help_text += f"\nMétodo de extracción actual: {self.extractor_method}"
+            help_text += f"\nOpciones: {', '.join(self.AVAILABLE_EXTRACTORS)}"
             
             return help_text
         
@@ -675,11 +692,11 @@ class CommandHandler:
         # Verificar qué archivos existen
         dataset_exists = os.path.exists(self.DATASET_PATH) and len(os.listdir(self.DATASET_PATH)) > 0
         processed_exists = os.path.exists(self.DATASET_PROCESSED_PATH) and len(os.listdir(self.DATASET_PROCESSED_PATH)) > 0
-        features_exist = os.path.exists(os.path.join(self.FEATURES_PATH, f'features_{self.preprocessor_type}.npy'))
+        features_exist = os.path.exists(os.path.join(self.FEATURES_PATH, f'features_{self.extractor_method}.npy'))
         model_exists = os.path.exists(self.SVM_MODEL_PATH)
         
         return {
-            'preprocessor_type': self.preprocessor_type,
+            'extractor_method': self.extractor_method,
             'paths': {
                 'dataset': self.DATASET_PATH,
                 'dataset_processed': self.DATASET_PROCESSED_PATH,

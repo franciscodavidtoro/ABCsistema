@@ -86,6 +86,7 @@ class BodyFeatureExtractor:
         if len(images) == 0:
             raise ValueError("La lista de imágenes está vacía")
         
+        print(f"[DEBUG BodyFeatureExtractor] extract_batch con {len(images)} imágenes, método: {self.method}")
         return self.extractor.extract_batch(images)
     
     def extract_from_directory(self, directory_path):

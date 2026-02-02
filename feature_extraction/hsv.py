@@ -102,11 +102,21 @@ class HSVExtractor:
         if len(images) == 0:
             raise ValueError("La lista de imágenes está vacía")
         
+        print(f"[DEBUG HSVExtractor] Iniciando extract_batch con {len(images)} imágenes")
+        import time
+        total_start = time.time()
+        
         # Extraer características de cada imagen
         features = []
-        for img in images:
+        for idx, img in enumerate(images):
+            if idx % 10 == 0:
+                elapsed = time.time() - total_start
+                print(f"[DEBUG HSVExtractor] Procesando imagen {idx+1}/{len(images)} (tiempo: {elapsed:.1f}s)")
             feat = self.extract(img)
             features.append(feat)
+        
+        total_elapsed = time.time() - total_start
+        print(f"[DEBUG HSVExtractor] Batch completado en {total_elapsed:.2f}s ({total_elapsed/len(images):.2f}s/imagen)")
         
         # Apilar resultados en una matriz
         return np.array(features, dtype=np.float32)
