@@ -20,7 +20,7 @@ class CommandHandler:
         preprocessor: Instancia del preprocesador activo.
     """
     
-    AVAILABLE_PREPROCESSORS = ['BLP', 'HSH', 'LBP']
+    AVAILABLE_PREPROCESSORS = ['BLP', 'HSH', 'LBP', 'HOG']
     
     # ============== RUTAS FIJAS DEL SISTEMA ==============
     # Ruta base del proyecto
@@ -174,14 +174,18 @@ class CommandHandler:
         if self.preprocessor is not None:
             return self.preprocessor
         
-        from preprocessing.preprocessors import BLPPreprocessor, HSHPreprocessor, LBPPreprocessor
+        # from preprocessing.preprocessors import BLPPreprocessor, HSHPreprocessor, LBPPreprocessor
         
         if self.preprocessor_type == 'BLP':
             self.preprocessor = BLPPreprocessor()
         elif self.preprocessor_type == 'HSH':
             self.preprocessor = HSHPreprocessor()
         elif self.preprocessor_type == 'LBP':
-            self.preprocessor = LBPPreprocessor()
+            from feature_extraction.lbp import LBPExtractor
+            self.preprocessor = LBPExtractor()
+        elif self.preprocessor_type == 'HOG':
+            from feature_extraction import HOGExtractor
+            self.preprocessor = HOGExtractor()
         
         return self.preprocessor
     

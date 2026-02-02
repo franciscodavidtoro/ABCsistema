@@ -20,7 +20,7 @@ class HOGExtractor:
         pixels_per_cell: tamaño (alto, ancho) en píxeles de cada celda (por defecto (8,8))
         cells_per_block: número de celdas por bloque (alto, ancho) (por defecto (2,2))
         image_size: si se especifica (H, W) las imágenes se redimensionan a este
-                    tamaño para garantizar una dimensión de salida constante.
+                    tamaño. Por defecto (128, 64) para evitar vectores gigantes.
         output_dim: dimensión fija de salida. Si None, se calculará automáticamente
                     cuando se llame a `set_image_size` o tras la primera extracción
     """
@@ -30,7 +30,7 @@ class HOGExtractor:
         orientations: int = 9,
         pixels_per_cell: Tuple[int, int] = (8, 8),
         cells_per_block: Tuple[int, int] = (2, 2),
-        image_size: Optional[Tuple[int, int]] = None,
+        image_size: Optional[Tuple[int, int]] = (128, 64),
         output_dim: Optional[int] = None,
     ) -> None:
         # Parámetros
